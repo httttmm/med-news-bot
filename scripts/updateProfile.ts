@@ -12,7 +12,7 @@ import { loadConfig } from '../src/modules/config.js';
 import { loadDotenvIfPresent } from '../src/modules/dotenv.js';
 
 const DEFAULT_DESCRIPTION =
-  '医療・医学の最新ニュースを国内外から自動収集して投稿します。英語記事は Claude (AI) で日本語訳。';
+  '医療・医学の最新ニュースを国内外から自動収集して投稿します。英語記事は Claude (AI) で日本語訳。\n\n※情報提供目的です。診断・治療の判断には必ず医師にご相談ください。';
 
 const PROFILE_COLLECTION = 'app.bsky.actor.profile';
 const PROFILE_RKEY = 'self';
