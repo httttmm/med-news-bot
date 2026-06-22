@@ -1,0 +1,84 @@
+name: Post medical news to Bluesky
+
+on:
+  # 外部 cron (cron-job.org) から workflow_dispatch 経由でトリガー。
+  # GitHub Actions の schedule は高負荷時に遅延/スキップする仕様で信頼性が低いため
+  # 使用せず、外部からの定刻トリガーで JST 9〜23 時の毎時起動する。
+  workflow_dispatch:
+    inputs:
+      max_posts:
+        description: "1 回の最大投稿件数"
+        required: false
+        default: "1"
+      disable_filter:
+        description: "キーワードフィルタを無効化 (true)"
+        required: false
+        default: ""
+      debug:
+        description: "デバッグログ (true)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: post-articles
+  cancel-in-progress: false
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+          persist-credentials: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Run bot
+        env:
+          BLUESKY_HANDLE: ${{ secrets.BLUESKY_HANDLE }}
+          BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          MAX_POSTS_PER_RUN: ${{ github.event.inputs.max_posts || '1' }}
+          DISABLE_KEYWORD_FILTER: ${{ github.event.inputs.disable_filter }}
+          DEBUG: ${{ github.event.inputs.debug }}
+        run: npm start
+
+      - name: Commit posted_urls.json if changed
+        run: |
+          if [[ -z "$(git status --porcelain data/posted_urls.json)" ]]; then
+            echo "No changes to posted_urls.json"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/posted_urls.json
+          git commit -m "chore(bot): update posted_urls.json [skip ci]"
+
+          for i in 1 2 3; do
+            if git push; then
+              echo "push succeeded on attempt $i"
+              exit 0
+            fi
+            echo "push attempt $i failed, pulling --rebase and retrying..."
+            git pull --rebase origin main || true
+            sleep $((i * 5))
+          done
+          echo "push failed after 3 attempts" >&2
+          exit 1
